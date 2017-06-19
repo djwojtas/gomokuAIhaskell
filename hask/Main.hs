@@ -4,49 +4,11 @@ import qualified Text.Printf
 import qualified Data.List
 import qualified Control.Arrow
 
+--------------------------------------------------------------------------------
+--------------- BASIC DATA STRUCTURES AND INSTANCES FOR THEM -------------------
+--------------------------------------------------------------------------------
+
 data Tree a = Branch [Tree a] | Leaf a
-
-instance (Show a) => Show (Tree a) where
-  show (Leaf val) = show val ++ " "
-  show (Branch list) = concat [show elem | elem <- list] ++ "\n"
-
-getMaxScoreField :: Board -> Pawn -> [(Double, Field)] -> Field
-getMaxScoreField board player list = (\[(_, x)] -> x) $ if (\[(x,_)] -> x /= 0) $ take 1 $ Data.List.sortBy (\(x, _) (y, _) -> y `compare` x) list then
-                                           take 1 $ Data.List.sortBy (\(x, _) (y, _) -> y `compare` x) list else
-                                           (\(Score val, (xpos, ypos)) -> [(val, Field xpos ypos)]) $ head $ listBestMoves $ getScoreBoard board player
-
-zipMaxWithFields :: Int -> Int -> Board -> Pawn -> [(Double, Field)]
-zipMaxWithFields depth branching board player = zipWith (\x y -> (x, y))
-                                                (leafBranchToList $ getMaxWin $ getMoveTree depth branching board player)
-                                                (movesToFieldsList $ take branching $ listBestMoves $ getScoreBoard board player)
-
-leafBranchToList :: Tree Double -> [Double]
-leafBranchToList (Branch list@(Leaf _:_)) = map (\(Leaf val) -> val) list
-leafBranchToList _ = []
-
-movesToFieldsList :: [(t, (Int,Int))] -> [Field]
-movesToFieldsList = map (\(_, (x, y)) -> Field x y)
-
-getMaxWin :: Tree Double -> Tree Double
-getMaxWin tree@(Branch (Branch _:_)) = getMaxWin (maxToMin tree)
-getMaxWin tree = tree
-
-getMoveTree :: Int -> Int -> Board -> Pawn -> Tree Double
-getMoveTree 0 _ board player = Leaf (getBoardScore board player)
-getMoveTree depth branching board player = Branch [getMoveTree (depth-1) branching branchingBoard (negatePawn player) | branchingBoard <- createBranches branching board player]
-
-createBranches :: Int -> Board -> Pawn -> [Board]
-createBranches branching board player = map (\(_, (x, y)) -> setPawn board (Field x y) player) (take branching (listBestMoves (getScoreBoard board player)))
-
-maxToMin :: Tree Double -> Tree Double
-maxToMin (Branch list@(Branch _:_)) = Branch [minToMax elem | elem <- list]
-maxToMin (Branch list) = Leaf (maximum (map (\(Leaf x) -> x) list))
-maxToMin (Leaf x) = Leaf x
-
-minToMax :: Tree Double -> Tree Double
-minToMax (Branch list@(Branch _:_)) = Branch [maxToMin elem | elem <- list]
-minToMax (Branch list) = Leaf (minimum (map (\(Leaf x) -> x) list))
-minToMax (Leaf x) = Leaf x
 
 data Pawn = X | O
 
@@ -84,24 +46,6 @@ instance Ord Field where
 
 data Board = Board (Map.Map Field Pawn) Int Int
 
-setPawn :: Board -> Field -> Pawn -> Board
-setPawn (Board boardMap x y) field pawn = Board (Map.insert field pawn boardMap) x y
-
-boardfieldToChar :: Maybe Pawn -> String
-boardfieldToChar (Just pawn) = [pawnToChar pawn, ' ']
-boardfieldToChar Nothing = "- "
-
-getBoardLine :: Board -> Int -> String
-getBoardLine (Board boardMap x _) line = concat ([boardfieldToChar(Map.lookup (Field wdth line) boardMap)
-                                                  | wdth <- [1..x-1]] ++ [boardfieldToChar(Map.lookup (Field x line) boardMap)])
-
-addNewLine :: String -> String
-addNewLine str = str ++ ['\n']
-
-boardToString :: Board -> String
-boardToString (Board boardMap x y) = concat [addNewLine (getBoardLine (Board boardMap x y) line)
-                                        | line <- [1..y-1]] ++ getBoardLine (Board boardMap x y) y
-
 data Score = Score Double | Occupied
 
 instance Eq Score where
@@ -117,13 +61,91 @@ instance Ord Score where
 instance Show Score where
   show = scoreToString
 
+data ScoreBoard = ScoreBoard [[Score]] Int Int
+
+--------------------------------------------------------------------------------
+-------------------------- CONVERTING DATA TO STRING ---------------------------
+--------------------------------------------------------------------------------
+
+boardfieldToChar :: Maybe Pawn -> String
+boardfieldToChar (Just pawn) = [' ', pawnToChar pawn, ' ']
+boardfieldToChar Nothing = " - "
+
+getBoardLine :: Board -> Int -> String
+getBoardLine (Board boardMap x _) line = concat ([boardfieldToChar(Map.lookup (Field wdth line) boardMap)
+                                                  | wdth <- [1..x-1]] ++ [boardfieldToChar(Map.lookup (Field x line) boardMap)])
+
+addNewLineAndNumber :: Int -> String -> String
+addNewLineAndNumber i str = Text.Printf.printf "%2d " i ++ str ++ ['\n']
+
+boardToString :: Board -> String
+boardToString (Board boardMap x y) = "    1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19\n" ++
+                                     concat [addNewLineAndNumber line (getBoardLine (Board boardMap x y) line) | line <- [1..y]]
+
 scoreToString :: Score -> String
 scoreToString (Score score) = Text.Printf.printf "%2.2f" score
 scoreToString Occupied = "XXX"
 
+--------------------------------------------------------------------------------
+------------------------------ MINMAX ALGORITHM --------------------------------
+--------------------------------------------------------------------------------
+
+getMoveTree :: Int -> Int -> Board -> Pawn -> Pawn -> Tree Double
+getMoveTree 0 _ board _ targetPlayer = Leaf (getBoardScore board targetPlayer)
+getMoveTree depth branching board player targetPlayer = Branch [getMoveTree (depth-1) branching branchingBoard (negatePawn player) targetPlayer | branchingBoard <- createBranches branching board player]
+
+createBranches :: Int -> Board -> Pawn -> [Board]
+createBranches branching board player = map (\(_, (x, y)) -> setPawn board (Field x y) player) (take branching (listBestMoves (getScoreBoard board player)))
+
+getMaxScoreField :: Board -> Pawn -> [(Double, Field)] -> Field
+getMaxScoreField board player list = (\[(_, x)] -> x) $ if (\[(x,_)] -> x /= 0) $ take 1 $ Data.List.sortBy (\(x, _) (y, _) -> y `compare` x) list then
+                                           take 1 $ Data.List.sortBy (\(x, _) (y, _) -> y `compare` x) list else
+                                           (\(Score val, (xpos, ypos)) -> [(val, Field xpos ypos)]) $ head $ listBestMoves $ getScoreBoard board player
+
+zipMaxWithFields :: Int -> Int -> Board -> Pawn -> [(Double, Field)]
+zipMaxWithFields depth branching board player = zipWith (\x y -> (x, y))
+                                                (leafBranchToList $ getMaxWin $ getMoveTree depth branching board player player)
+                                                (movesToFieldsList $ take branching $ listBestMoves $ getScoreBoard board player)
+
+leafBranchToList :: Tree Double -> [Double]
+leafBranchToList (Branch list@(Leaf _:_)) = map (\(Leaf val) -> val) list
+leafBranchToList _ = []
+
+movesToFieldsList :: [(t, (Int,Int))] -> [Field]
+movesToFieldsList = map (\(_, (x, y)) -> Field x y)
+
+getMaxWin :: Tree Double -> Tree Double
+getMaxWin tree@(Branch (Branch _:_)) = getMaxWin (minToMax tree)
+getMaxWin tree = tree
+
+maxToMin :: Tree Double -> Tree Double
+maxToMin (Branch list@(Branch _:_)) = Branch [minToMax elem | elem <- list]
+maxToMin (Branch list) = Leaf (maximum (map (\(Leaf x) -> x) list))
+maxToMin (Leaf x) = Leaf x
+
+minToMax :: Tree Double -> Tree Double
+minToMax (Branch list@(Branch _:_)) = Branch [maxToMin elem | elem <- list]
+minToMax (Branch list) = Leaf (minimum (map (\(Leaf x) -> x) list))
+minToMax (Leaf x) = Leaf x
+
+--------------------------------------------------------------------------------
+-------------------------- BACISC GAME OPERATIONS ------------------------------
+--------------------------------------------------------------------------------
+
 isFieldOccupied :: Maybe Pawn -> Bool
 isFieldOccupied (Just _) = True
 isFieldOccupied Nothing = False
+
+setPawn :: Board -> Field -> Pawn -> Board
+setPawn (Board boardMap x y) field pawn = Board (Map.insert field pawn boardMap) x y
+
+negatePawn :: Pawn -> Pawn
+negatePawn X = O
+negatePawn O = X
+
+--------------------------------------------------------------------------------
+-------------------------- HEURISTIC FUNCTIONS ---------------------------------
+--------------------------------------------------------------------------------
 
 calculateFieldScore :: Field -> Board -> Pawn -> Double
 calculateFieldScore field board pawn = sum [horizontalMatch field board pawn,
@@ -132,7 +154,9 @@ calculateFieldScore field board pawn = sum [horizontalMatch field board pawn,
                                             closeToOtherPawnPoints field board,
                                             searchWin field board (negatePawn pawn),
                                             threatSearch field board pawn,
-                                            searchWin field board pawn]
+                                            searchWin field board pawn,
+                                            ascSlopeMatch field board pawn,
+                                            descSlopeMatch field board pawn]
 
 closeToCenterPoints :: Field -> Board -> Double
 closeToCenterPoints (Field xf yf) (Board boardMap x y) = 0.5 * (sqrt((fromIntegral (x+1) / 2) ^ 2 + (fromIntegral (y+1) / 2) ^ 2) -
@@ -149,7 +173,6 @@ getFieldOccupationScore player (Field xf yf) (Board boardMap x y)
   | Map.lookup (Field xf yf) boardMap == Just player = 15
   | otherwise = -1
 
---starting filed -> board to serach -> player -> current offset -> score for recursion
 horizontalLeft :: Field -> Board -> Pawn -> Int -> Double
 horizontalLeft (Field xf yf) (Board boardMap x y) player pos
   | getFieldOccupationScore player (Field pos yf) (Board boardMap x y) == -1 = 0
@@ -157,7 +180,6 @@ horizontalLeft (Field xf yf) (Board boardMap x y) player pos
   | otherwise = horizontalLeft (Field xf yf) (Board boardMap x y) player (pos-1) +
                   getFieldOccupationScore player (Field pos yf) (Board boardMap x y)
 
---starting filed -> board to serach -> player -> current offset -> score for recursion
 horizontalRight :: Field -> Board -> Pawn -> Int -> Double
 horizontalRight (Field xf yf) (Board boardMap x y) player pos
   | getFieldOccupationScore player (Field pos yf) (Board boardMap x y) == -1 = 0
@@ -169,7 +191,6 @@ horizontalMatch :: Field -> Board -> Pawn -> Double
 horizontalMatch (Field xf yf) (Board boardMap x y) pawn = horizontalLeft (Field xf yf) (Board boardMap x y) pawn (xf-1) +
                                                      horizontalRight (Field xf yf) (Board boardMap x y) pawn (xf+1)
 
---starting filed -> board to serach -> player -> current offset -> score for recursion
 verticalDown :: Field -> Board -> Pawn -> Int -> Double
 verticalDown (Field xf yf) (Board boardMap x y) player pos
  | getFieldOccupationScore player (Field xf pos) (Board boardMap x y) == -1 = 0
@@ -177,7 +198,6 @@ verticalDown (Field xf yf) (Board boardMap x y) player pos
  | otherwise = verticalDown (Field xf yf) (Board boardMap x y) player (pos-1) +
                  getFieldOccupationScore player (Field xf pos) (Board boardMap x y)
 
---starting filed -> board to serach -> player -> current offset -> score for recursion
 verticalUp :: Field -> Board -> Pawn -> Int -> Double
 verticalUp (Field xf yf) (Board boardMap x y) player pos
  | getFieldOccupationScore player (Field xf pos) (Board boardMap x y) == -1 = 0
@@ -189,61 +209,53 @@ verticalMatch :: Field -> Board -> Pawn -> Double
 verticalMatch (Field xf yf) (Board boardMap x y) pawn = verticalDown (Field xf yf) (Board boardMap x y) pawn (yf-1) +
                                                     verticalUp (Field xf yf) (Board boardMap x y) pawn (yf+1)
 
+slopeUpRight :: Field -> Board -> Pawn -> Int -> Int -> Double
+slopeUpRight (Field xf yf) (Board boardMap x y) player posx posy
+ | getFieldOccupationScore player (Field posx posy) (Board boardMap x y) == -1 = 0
+ | posy-yf > 4 = 0
+ | otherwise = slopeUpRight (Field xf yf) (Board boardMap x y) player (posx+1) (posy+1) +
+                 getFieldOccupationScore player (Field posx posy) (Board boardMap x y)
+
+slopeDownLeft :: Field -> Board -> Pawn -> Int -> Int -> Double
+slopeDownLeft (Field xf yf) (Board boardMap x y) player posx posy
+  | getFieldOccupationScore player (Field posx posy) (Board boardMap x y) == -1 = 0
+  | yf-posy > 4 = 0
+  | otherwise = slopeDownLeft (Field xf yf) (Board boardMap x y) player (posx-1) (posy-1) +
+                  getFieldOccupationScore player (Field posx posy) (Board boardMap x y)
+
+ascSlopeMatch :: Field -> Board -> Pawn -> Double
+ascSlopeMatch (Field xf yf) (Board boardMap x y) pawn = slopeUpRight (Field xf yf) (Board boardMap x y) pawn (xf+1) (yf+1) +
+                                                    slopeDownLeft (Field xf yf) (Board boardMap x y) pawn (xf-1) (yf-1)
+
+slopeDownRight :: Field -> Board -> Pawn -> Int -> Int -> Double
+slopeDownRight (Field xf yf) (Board boardMap x y) player posx posy
+  | getFieldOccupationScore player (Field posx posy) (Board boardMap x y) == -1 = 0
+  | yf-posy > 4 = 0
+  | otherwise = slopeDownRight (Field xf yf) (Board boardMap x y) player (posx+1) (posy-1) +
+                 getFieldOccupationScore player (Field posx posy) (Board boardMap x y)
+
+slopeUpLeft :: Field -> Board -> Pawn -> Int -> Int -> Double
+slopeUpLeft (Field xf yf) (Board boardMap x y) player posx posy
+  | getFieldOccupationScore player (Field posx posy) (Board boardMap x y) == -1 = 0
+  | posy-yf > 4 = 0
+  | otherwise = slopeUpLeft (Field xf yf) (Board boardMap x y) player (posx-1) (posy+1) +
+                  getFieldOccupationScore player (Field posx posy) (Board boardMap x y)
+
+descSlopeMatch :: Field -> Board -> Pawn -> Double
+descSlopeMatch (Field xf yf) (Board boardMap x y) pawn = slopeDownRight (Field xf yf) (Board boardMap x y) pawn (xf+1) (yf-1) +
+                                                    slopeUpLeft (Field xf yf) (Board boardMap x y) pawn (xf-1) (yf+1)
+
 getFieldScore :: Field -> Board -> Pawn -> Score
 getFieldScore (Field xf yf) (Board boardMap x y) pawn
   | isFieldOccupied (Map.lookup (Field xf yf) boardMap) = Occupied
   | otherwise = Score (calculateFieldScore (Field xf yf) (Board boardMap x y) pawn)
 
-data ScoreBoard = ScoreBoard [[Score]] Int Int
-
 getScoreBoard :: Board -> Pawn -> ScoreBoard
 getScoreBoard (Board boardMap x y) pawn = ScoreBoard [[getFieldScore (Field xf yf) (Board boardMap x y) pawn | xf <- [1..x]] | yf <-[1..y]] x y
-
-addTabsToScores :: [Score] -> String
-addTabsToScores = foldr (\x y -> scoreToString x ++ "\t" ++ y) ""
-
-scrBrdToStr :: ScoreBoard -> String
-scrBrdToStr (ScoreBoard scoreList x y) = foldr ((\x y -> x ++ "\n" ++ y) . addTabsToScores) "" scoreList
 
 listBestMoves :: ScoreBoard -> [(Score, (Int, Int))]
 listBestMoves (ScoreBoard scoreList _ _) = Data.List.sortBy (\(x, _) (y, _) -> x `compare` y)
                                   (zipWith (\x y -> (x, y)) (concat scoreList) [(x, y) | y <- [1..19], x <- [1..19]])
-
-negatePawn :: Pawn -> Pawn
-negatePawn X = O
-negatePawn O = X
-
--- threatUp :: Int -> Field -> Board -> Pawn -> Double
--- threatUp count (Field xf yf) (Board boardMap x y) player
---   | yf+1 > 19 = 0
---   | count > 0 && Map.lookup (Field xf (yf+1)) boardMap == Just (negatePawn player) = threatUp (count-1) (Field xf (yf+1)) (Board boardMap x y) player
---   | count == 0 && Data.Maybe.isNothing (Map.lookup (Field xf (yf+1)) boardMap) = 200
---   | count == 0 && Map.lookup (Field xf (yf+1)) boardMap == Just (negatePawn player) = 200
---   | otherwise = 0
---
--- threatDown :: Int -> Field -> Board -> Pawn -> Double
--- threatDown count (Field xf yf) (Board boardMap x y) player
---   | yf-1 < 1 = 0
---   | count > 0 && Map.lookup (Field xf (yf-1)) boardMap == Just (negatePawn player) = threatDown (count-1) (Field xf (yf-1)) (Board boardMap x y) player
---   | count == 0 && Data.Maybe.isNothing (Map.lookup (Field xf (yf-1)) boardMap) = 200
---   | count == 0 && Map.lookup (Field xf (yf-1)) boardMap == Just (negatePawn player) = 200
---   | otherwise = 0
---
--- threatRight :: Int -> Field -> Board -> Pawn -> Double
--- threatRight count (Field xf yf) (Board boardMap x y) player
---   | xf+1 > 19 = 0
---   | count > 0 && Map.lookup (Field (xf+1) yf) boardMap == Just (negatePawn player) = threatRight (count-1) (Field (xf+1) yf) (Board boardMap x y) player
---   | count == 0 && Data.Maybe.isNothing (Map.lookup (Field (xf+1) yf) boardMap) = 200
---   | count == 0 && Map.lookup (Field (xf+1) yf) boardMap == Just (negatePawn player) = 200
---   | otherwise = 0
---
--- threatLeft :: Int -> Field -> Board -> Pawn -> Double
--- threatLeft count (Field xf yf) (Board boardMap x y) player
---   | xf-1 < 1 = 0
---   | count > 0 && Map.lookup (Field (xf-1) yf) boardMap == Just (negatePawn player) = threatLeft (count-1) (Field (xf-1) yf) (Board boardMap x y) player
---   | count == 0 && Data.Maybe.isNothing (Map.lookup (Field (xf-1) yf) boardMap) = 200
---   | count == 0 && Map.lookup (Field (xf-1) yf) boardMap == Just (negatePawn player) = 200
---   | otherwise = 0
 
 searchWinUp :: Field -> Board -> Pawn -> Double
 searchWinUp (Field xf yf) (Board boardMap x y) player
@@ -310,12 +322,6 @@ threatSearch field board player
   | searchWinUpLeft field board (negatePawn player) + searchWinDownRight field board (negatePawn player) > 3 = 200
   | searchWinUpRight field board (negatePawn player) + searchWinDownLeft field board (negatePawn player) > 3 = 200
   | otherwise = 0
-  -- | closeToOtherPawnPoints field board > 0 = threatUp 3 field board player +
-  --                                            threatDown 3 field board player +
-  --                                            threatRight 3 field board player +
-  --                                            threatLeft 3 field board player
-  -- | otherwise = 0
-
 
 winCheck :: Board -> Pawn -> Bool
 winCheck (Board boardMap _ _) player = any (fieldWinCheck boardMap) (filter (\(x, y) -> y == player) (Map.toList boardMap))
@@ -346,59 +352,86 @@ upwardsWinCheck boardMap (Field xf yf, pawn)
   | Map.lookup (Field (xf+1) (yf+1)) boardMap == Just pawn = 1 + upwardsWinCheck boardMap (Field (xf+1) (yf+1), pawn)
   | otherwise = 1
 
-scoreToDouble :: Score -> Double
-scoreToDouble (Score x) = x
-scoreToDouble Occupied = 0
-
 getBoardScore :: Board -> Pawn -> Double
-getBoardScore board player = if winCheck board player then (-20000) else 0 +
+getBoardScore board player = if winCheck board (negatePawn player) then (-10000) else 0 +
                              if winCheck board player then 10000 else 0 +
                              sum [costFunc (Field x y) board player | y <- [1..19], x <- [1..19]]
 
 costFunc :: Field -> Board -> Pawn -> Double
-costFunc field board player = threatSearch field board (negatePawn player) -
-                              searchWin field board (negatePawn player) +
-                              searchWin field board player
+costFunc field board@(Board boardMap _ _) player
+    | isFieldOccupied (Map.lookup field boardMap) = 0
+    | otherwise = threatSearch field board (negatePawn player) +
+                  searchWin field board player -
+                  (searchWin field board (negatePawn player) * 10)
+
+--------------------------------------------------------------------------------
+----------------------------- GAME FUNCTIONS -----------------------------------
+--------------------------------------------------------------------------------
 
 makeMove :: Board -> Pawn -> Board
 makeMove board pawn = setPawn board (getMaxScoreField board pawn $ zipMaxWithFields 4 3 board pawn) pawn
 
 playerLoop :: Board -> IO()
-playerLoop board = if winCheck board X then putStrLn "COMPUTER WINS" else do
-  putStrLn "\n\n----- YOU PLAY AS 'O' -----\n"
-  putStrLn (boardToString board)
-  putStrLn "\n\n----- ENTER ROW:\n"
-  row <- getLine
-  putStrLn "\n\n----- ENTER COLUMN:\n"
-  col <- getLine
-  pcLoop (setPawn board (Field (read col) (read row)) O)
+playerLoop board
+  | winCheck board X = do
+    putStrLn "COMPUTER WINS. :"
+    putStrLn (boardToString board)
+    putStrLn "TRY AGAIN!"
+  | otherwise = do
+    putStrLn "\n\n----- YOU PLAY AS 'O' -----\n"
+    putStrLn (boardToString board)
+    putStrLn "\n\n----- ENTER ROW:\n"
+    row <- getLine
+    putStrLn "\n\n----- ENTER COLUMN:\n"
+    col <- getLine
+    pcLoop (setPawn board (Field (read col) (read row)) O)
 
 pcLoop :: Board -> IO()
-pcLoop board = if winCheck board O then putStrLn "PLAYER WINS" else do
-  putStrLn "\n\n----- PC (X) MAKES MOVE -----\n"
-  putStrLn (boardToString board)
-  playerLoop (makeMove board X)
-
-testLoop :: Int -> Board -> Pawn -> IO()
-testLoop 0 _ _ = putStrLn "END"
-testLoop cntdwn board pawn =
-  if winCheck board pawn then putStrLn (pawnToString pawn ++ " WINS") else do
-    putStrLn $ "\n\n------------------------------------------- SCORE FOR PLAYER " ++ pawnToString pawn ++ " " ++ show (getBoardScore board pawn) ++ "\n"
+pcLoop board
+  | winCheck board O = do
+    putStrLn "PLAYER WINS!!! :"
     putStrLn (boardToString board)
-    -- putStrLn (scrBrdToStr (getScoreBoard board pawn))
-    -- print (map (Control.Arrow.first scoreToString) $ take 10 (listBestMoves (getScoreBoard board pawn)))
-    testLoop (cntdwn-1) (makeMove board pawn) (negatePawn pawn)
+    putStrLn "CONGRATULATIONS!"
+  | otherwise = do
+    putStrLn "\n\n----- PC (X) MAKES MOVE (CAN TAKE COUPLE OF SECONDS) -----\n"
+    putStrLn (boardToString board)
+    playerLoop (makeMove board X)
 
-testBoard = setPawn (Board Map.empty 19 19) (Field 5 1) X
-testBoard2 = setPawn testBoard (Field 4 2) X
-testBoard3 = setPawn testBoard2 (Field 3 3) X
-testBoard4 = setPawn testBoard3 (Field 2 4) X
-testBoard5 = setPawn testBoard4 (Field 1 5) X
+cpuVsCpuLoop :: Board -> Pawn -> IO()
+cpuVsCpuLoop board pawn
+  | winCheck board pawn = do
+    putStrLn (pawnToString pawn ++ " WINS")
+    putStrLn (boardToString board)
+  | otherwise = do
+    putStrLn $ "\n\nPLAYER " ++ pawnToString pawn ++ "\n"
+    putStrLn (boardToString board)
+    cpuVsCpuLoop (makeMove board pawn) (negatePawn pawn)
 
 emptyBoard = Board Map.empty 19 19
 
-main = playerLoop emptyBoard
+-- main = playerLoop emptyBoard
+main = cpuVsCpuLoop emptyBoard X
 
--- main = do
---   putStrLn (scrBrdToStr (getScoreBoard testBoard5 X))
---   print (map (Control.Arrow.first scoreToString) (listBestMoves (getScoreBoard testBoard5 X)))
+--------------------------------------------------------------------------------
+---------------- DEBUG FUNCTIONS AND INSTANCES (CAN BE DELETED) ----------------
+--------------------------------------------------------------------------------
+
+instance (Show a) => Show (Tree a) where
+  show (Leaf val) = show val ++ " "
+  show (Branch list) = concat [show elem | elem <- list] ++ "\n"
+
+getMaxScoreFields :: Board -> Pawn -> [(Double, Field)] -> String
+getMaxScoreFields board player list = concatMap (\(Score val, (xpos, ypos)) -> ("(" ++ show val ++ " " ++ show xpos ++ " " ++ show ypos ++ ") ")) $ take 5 $ listBestMoves $ getScoreBoard board player
+
+addTabsToScores :: [Score] -> String
+addTabsToScores = foldr (\x y -> scoreToString x ++ "\t" ++ y) ""
+
+scrBrdToStr :: ScoreBoard -> String
+scrBrdToStr (ScoreBoard scoreList x y) = foldr ((\x y -> x ++ "\n" ++ y) . addTabsToScores) "" scoreList
+
+scoreToDouble :: Score -> Double
+scoreToDouble (Score x) = x
+scoreToDouble Occupied = 0
+
+zipMaxWithFieldsStr :: Int -> Int -> Board -> Pawn -> String
+zipMaxWithFieldsStr depth branching board player = concatMap (\(val, Field xpos ypos) -> ("(" ++ show val ++ " " ++ show xpos ++ " " ++ show ypos ++ ") ")) $ zipMaxWithFields depth branching board player
