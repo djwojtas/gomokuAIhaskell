@@ -6,9 +6,12 @@ __Watości funkcji do wersji zbudowanej i uruchamianej z poziomu ghci__
 
 Optymalna wartość głębokości drzewa i jego gałęzienia dla wersji uruchamianej z ghci to odpowiednio 4 i 3, jest to wartość domyślna i wymaga 5-10 sekund na ruch w ghci. 372 linijka kodu dla takiego ustawienia wygląda następująco:
 
-  makeMove board pawn = setPawn board (getMaxScoreField board pawn $ zipMaxWithFields 4 3 board pawn) pawn
-  
+```haskell
+makeMove board pawn = setPawn board (getMaxScoreField board pawn $ zipMaxWithFields 4 3 board pawn) pawn
+```
+
 Wartości optymalne dla wersji zbudowanej to 6 i 4 (ok. 4-6 sekund na ruch). 372 linijka dla takiego ustawienia:
 
-  makeMove board pawn = setPawn board (getMaxScoreField board pawn $ zipMaxWithFields 6 4 board pawn) pawn
-
+```haskell
+makeMove board pawn = setPawn board (getMaxScoreField board pawn $ zipMaxWithFields 6 4 board pawn) pawn
+```
