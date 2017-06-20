@@ -399,9 +399,7 @@ pcLoop board
 
 cpuVsCpuLoop :: Board -> Pawn -> IO()
 cpuVsCpuLoop board pawn
-  | winCheck board pawn = do
-    putStrLn (pawnToString pawn ++ " WINS")
-    putStrLn (boardToString board)
+  | winCheck board pawn = putStrLn $ pawnToString pawn ++ " WINS"
   | otherwise = do
     putStrLn $ "\n\nPLAYER " ++ pawnToString pawn ++ "\n"
     putStrLn (boardToString board)
@@ -409,8 +407,8 @@ cpuVsCpuLoop board pawn
 
 emptyBoard = Board Map.empty 19 19
 
--- main = playerLoop emptyBoard
-main = cpuVsCpuLoop emptyBoard X
+main = playerLoop emptyBoard
+-- main = cpuVsCpuLoop emptyBoard X
 
 --------------------------------------------------------------------------------
 ---------------- DEBUG FUNCTIONS AND INSTANCES (CAN BE DELETED) ----------------
